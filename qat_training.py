@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import tensorflow as tf
-
+import pdb
 print(tf.__version__)
 
 from tensorflow.examples.tutorials.mnist import input_data
@@ -15,8 +15,8 @@ print('val info:')
 print(mnist.validation.images.shape, mnist.validation.labels.shape)
 
 with tf.device('/gpu:0'):
-    x = tf.placeholder(tf.float32, [None, 1, 28, 28], name='input_0')
-    y_ = tf.placeholder(tf.float32, [None, 10], name='output_0')
+    x = tf.placeholder(tf.float32, [32, 1, 28, 28], name='input_0')
+    y_ = tf.placeholder(tf.float32, [32, 10], name='output_0')
 
 
     def network(inputs):
@@ -46,7 +46,7 @@ with tf.device('/gpu:0'):
 
         model = tf.layers.conv2d(model, filters=54, kernel_size=(3, 3), padding='same', activation='relu',
                                  data_format='channels_first')  # 3X3
-        logits = tf.layers.conv2d(model, filters=10, kernel_size=(3, 3), activation='relu',
+        logits = tf.layers.conv2d(model, filters=10, kernel_size=(3, 3), activation=None,
                                   data_format='channels_first', name='output_embeddings')
 
         # logits = tf.squeeze(logits, axis=[-2, -1])
@@ -58,20 +58,19 @@ with tf.device('/gpu:0'):
     probs = tf.nn.softmax(logits, name='softmax', axis=1)
     logits = tf.squeeze(logits, axis=[-2, -1])
     # y = tf.argmax(logits, axis=1)
-
+print(logits,probs)
 loss = tf.losses.softmax_cross_entropy(logits=logits, onehot_labels=y_)
 accuracy_op = tf.metrics.accuracy(labels=tf.argmax(y_, axis=1), predictions=tf.argmax(logits, axis=1))[1]
 
 # cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(logits),reduction_indices=[1]))
 # correct_prediction = tf.equal(tf.argmax(y_,1), tf.argmax(logits, axis=1))
 # accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
+print(tf.get_default_graph())
 tf.contrib.quantize.experimental_create_training_graph(tf.get_default_graph(), symmetric=True, use_qdq=True,
-                                                       quant_delay=4500)
-
+                                                       quant_delay=500)
 global_steps = tf.Variable(0, trainable=False)
-learning_rate = tf.train.exponential_decay(0.01, global_steps, 100, 0.9, staircase=True)
-train_op = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss, global_step=global_steps)
+learning_rate = tf.train.exponential_decay(0.001, global_steps, 500, 0.9, staircase=True)
+train_op = tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=global_steps)
 # train_op = tf.train.GradientDescentOptimizer(0.001).minimize(loss)
 
 init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
@@ -79,18 +78,21 @@ init = tf.group(tf.global_variables_initializer(), tf.local_variables_initialize
 saver = tf.train.Saver(max_to_keep=3)
 checkpoint_dir = 'saved_results/mnist_ckpt/'
 
-with tf.Session() as sess:
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+with tf.Session(config=config) as sess:
     sess.run(init)
-    for i in range(5000):
-        mnist_images, batch_ys = mnist.train.next_batch(256)
-        batch_xs = np.array(mnist_images * 255, dtype=np.uint8)
+    for i in range(3001):
+        mnist_images, batch_ys = mnist.train.next_batch(32)
+        batch_xs = np.array(mnist_images*255, dtype=np.uint8)
+#        print(batch_ys[0])
         train_loss, _, current_learning_rate = sess.run([loss, train_op, learning_rate],
                                                         {x: batch_xs.reshape(-1, 28, 28, 1).transpose((0, 3, 1, 2)),
                                                          y_: batch_ys.reshape(-1, 10)})
-        saver.save(sess, checkpoint_dir + 'model.ckpt')
-        print(train_loss)
-        if (i % 100 == 0):
+
+        if (i % 500 == 0):
             print('current_learning_rate:', current_learning_rate)
+            saver.save(sess, checkpoint_dir + 'model'+str(i).zfill(6)+'.ckpt')
             test_accuracy = sess.run(accuracy_op, {x: batch_xs.reshape(-1, 28, 28, 1).transpose((0, 3, 1, 2)),
                                                    y_: batch_ys.reshape(-1, 10)})
             print("Step=%d, Train loss=%.4f,[Test accuracy=%.2f]" % (i, train_loss, test_accuracy))
@@ -100,4 +102,3 @@ with tf.Session() as sess:
     test_images = np.array(test_images * 255, dtype=np.uint8)
     print(accuracy_op.eval({x: test_images, y_: mnist.validation.labels.reshape(-1, 10)}))
     sess.close()
-
