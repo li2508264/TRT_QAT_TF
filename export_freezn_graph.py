@@ -33,7 +33,7 @@ with tf.Graph().as_default() as graph:
 
             model = tf.layers.conv2d(model, filters=54, kernel_size=(3, 3), padding='same', activation='relu',
                                      data_format='channels_first')  # 3X3
-            logits = tf.layers.conv2d(model, filters=10, kernel_size=(3, 3), activation='relu',
+            logits = tf.layers.conv2d(model, filters=10, kernel_size=(3, 3), activation=None,
                                       data_format='channels_first', name='output_embeddings')
 
             # logits = tf.squeeze(logits, axis=[-2, -1])
