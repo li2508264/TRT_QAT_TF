@@ -3,7 +3,7 @@ Show how to use QAT in TF1.x to train a network for mnist and convert it into Te
 
 Do it step by step.
 
-- 0.1  `docker pull nvcr.io/nvidia/tensorflow:20.01-tf1-py3`
+- 0.1  `docker pull nvcr.io/nvidia/tensorflow:22.06-tf1-py3` with Trt8
 - 0.2 `docker run --rm -it --gpus all nvcr.io/nvidia/tensorflow:20.01-tf1-py3`
 - 0.3 `git clone https://github.com/shiyongming/QAT_demo.git`
 - 0.4 `cd QAT_demo/`
