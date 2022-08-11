@@ -21,3 +21,4 @@ Do it step by step.
 - 6 `python3 infer.py -e saved_results/mnist_qat.trt -b 1`
 
 can infer onnx model by python onnx_infer1.py
+

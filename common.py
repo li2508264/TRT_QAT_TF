@@ -1,27 +1,9 @@
-#
-# Copyright (c) 2021, NVIDIA CORPORATION. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
-from itertools import chain
 import argparse
 import os
-
-import pycuda.driver as cuda
-import pycuda.autoinit
+import  pdb
 import numpy as np
-
+import pycuda.autoinit
+import pycuda.driver as cuda
 import tensorrt as trt
 
 try:
@@ -43,22 +25,28 @@ def add_help(description):
 
 
 def find_sample_data(description="Runs a TensorRT Python sample", subfolder="", find_files=[], err_msg=""):
-    '''
+    """
     Parses sample arguments.
+
     Args:
         description (str): Description of the sample.
         subfolder (str): The subfolder containing data relevant to this sample
         find_files (str): A list of filenames to find. Each filename will be replaced with an absolute path.
+
     Returns:
         str: Path of data directory.
-    '''
+    """
 
     # Standard command-line arguments for all samples.
     kDEFAULT_DATA_ROOT = os.path.join(os.sep, "usr", "src", "tensorrt", "data")
     parser = argparse.ArgumentParser(description=description, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("-d", "--datadir",
-                        help="Location of the TensorRT sample data directory, and any additional data directories.",
-                        action="append", default=[kDEFAULT_DATA_ROOT])
+    parser.add_argument(
+        "-d",
+        "--datadir",
+        help="Location of the TensorRT sample data directory, and any additional data directories.",
+        action="append",
+        default=[kDEFAULT_DATA_ROOT],
+    )
     args, _ = parser.parse_known_args()
 
     def get_data_path(data_dir):
@@ -70,8 +58,11 @@ def find_sample_data(description="Runs a TensorRT Python sample", subfolder="", 
             data_path = data_dir
         # Make sure data directory exists.
         if not (os.path.exists(data_path)) and data_dir != kDEFAULT_DATA_ROOT:
-            print("WARNING: {:} does not exist. Please provide the correct data path with the -d option.".format(
-                data_path))
+            print(
+                "WARNING: {:} does not exist. Please provide the correct data path with the -d option.".format(
+                    data_path
+                )
+            )
         return data_path
 
     data_paths = [get_data_path(data_dir) for data_dir in args.datadir]
@@ -82,11 +73,14 @@ def locate_files(data_paths, filenames, err_msg=""):
     """
     Locates the specified files in the specified data directories.
     If a file exists in multiple data directories, the first directory is used.
+
     Args:
         data_paths (List[str]): The data directories.
         filename (List[str]): The names of the files to find.
+
     Returns:
         List[str]: The absolute paths of the files.
+
     Raises:
         FileNotFoundError if a file could not be located.
     """
@@ -103,7 +97,8 @@ def locate_files(data_paths, filenames, err_msg=""):
     for f, filename in zip(found_files, filenames):
         if not f or not os.path.exists(f):
             raise FileNotFoundError(
-                "Could not find {:}. Searched in data paths: {:}\n{:}".format(filename, data_paths, err_msg))
+                "Could not find {:}. Searched in data paths: {:}\n{:}".format(filename, data_paths, err_msg)
+            )
     return found_files
 
 
@@ -119,54 +114,56 @@ class HostDeviceMem(object):
     def __repr__(self):
         return self.__str__()
 
+def allocate_buffers(engine, context):
+    """Allocates all host/device in/out buffers required for an engine."""
+    num = engine.num_bindings
+    dtype = trt.nptype(engine.get_binding_dtype('camera:front:wide:120fov_frame'))
+    assert trt.nptype(engine.get_binding_dtype('waitnet_waitline')) == dtype
+    bindings = []
+    print("qinlog ",context.get_binding_shape)
+    dims_in = context.get_binding_shape(0)
+    hmem_in = cuda.pagelocked_empty(trt.volume(dims_in), dtype)
+    dmem_in = cuda.mem_alloc(hmem_in.nbytes)
+    bindings.append(int(dmem_in))
+    inputs = [HostDeviceMem(hmem_in, dmem_in)]
+    output_shape=[]
+    outputs = []
+    for i in range(1,7):
+        dims_out = context.get_binding_shape(i)
+        output_shape.append(dims_out)
+        hmem_out = cuda.pagelocked_empty(trt.volume(dims_out), dtype)
+        dmem_out = cuda.mem_alloc(hmem_out.nbytes)
+        bindings.append(int(dmem_out))
+        outputs.extend([HostDeviceMem(hmem_out, dmem_out)])
 
+    return inputs, outputs,bindings,output_shape
 # Allocates all buffers required for an engine, i.e. host/device inputs/outputs.
-def allocate_buffers(engine):
-    inputs = []
-    outputs = []
-    bindings = []
-    stream = cuda.Stream()
-    for binding in engine:
-        size = trt.volume(engine.get_binding_shape(binding)) * engine.max_batch_size
-        dtype = trt.nptype(engine.get_binding_dtype(binding))
-        # Allocate host and device buffers
-        host_mem = cuda.pagelocked_empty(size, dtype)
-        device_mem = cuda.mem_alloc(host_mem.nbytes)
-        # Append the device buffer to device bindings.
-        bindings.append(int(device_mem))
-        # Append to the appropriate list.
-        if engine.binding_is_input(binding):
-            inputs.append(HostDeviceMem(host_mem, device_mem))
-        else:
-            outputs.append(HostDeviceMem(host_mem, device_mem))
-    return inputs, outputs, bindings, stream
-
-
-# Allocates all buffers required for an engine with dynamic shapes, i.e. host/device inputs/outputs.
-def allocate_buffers_v2(engine, h_, w_):
-    inputs = []
-    outputs = []
-    bindings = []
-    stream = cuda.Stream()
-    for binding in engine:
-        size = trt.volume(engine.get_binding_shape(binding)) * engine.max_batch_size * h_ * w_
-        dtype = trt.nptype(engine.get_binding_dtype(binding))
-        # Allocate host and device buffers
-        host_mem = cuda.pagelocked_empty(size, dtype)
-        device_mem = cuda.mem_alloc(host_mem.nbytes)
-        # Append the device buffer to device bindings.
-        bindings.append(int(device_mem))
-        # Append to the appropriate list.
-        if engine.binding_is_input(binding):
-            inputs.append(HostDeviceMem(host_mem, device_mem))
-        else:
-            outputs.append(HostDeviceMem(host_mem, device_mem))
-    return inputs, outputs, bindings, stream
+#def allocate_buffers(engine):
+#    inputs = []
+#    outputs = []
+#    bindings = []
+#    stream = cuda.Stream()
+#    for binding in engine:
+#        print(engine)
+#        size = trt.volume(engine.get_binding_shape(binding)) * engine.max_batch_size
+#        dtype = trt.nptype(engine.get_binding_dtype(binding))
+#        # Allocate host and device buffers
+#        host_mem = cuda.pagelocked_empty(size, dtype)
+#        device_mem = cuda.mem_alloc(host_mem.nbytes)
+#        # Append the device buffer to device bindings.
+#        bindings.append(int(device_mem))
+#        # Append to the appropriate list.
+#        if engine.binding_is_input(binding):
+#            inputs.append(HostDeviceMem(host_mem, device_mem))
+#        else:
+#            outputs.append(HostDeviceMem(host_mem, device_mem))
+#    return inputs, outputs, bindings, stream
 
 
 # This function is generalized for multiple inputs/outputs.
 # inputs and outputs are expected to be lists of HostDeviceMem objects.
 def do_inference(context, bindings, inputs, outputs, stream, batch_size=1):
+    context.set_binding_shape(0, (32,3,128,128))
     # Transfer input data to the GPU.
     [cuda.memcpy_htod_async(inp.device, inp.host, stream) for inp in inputs]
     # Run inference.
@@ -179,8 +176,9 @@ def do_inference(context, bindings, inputs, outputs, stream, batch_size=1):
     return [out.host for out in outputs]
 
 
-def do_inference_v2(context, bindings, inputs, outputs, stream, h_, w_, binding_id):
-    context.set_binding_shape(binding_id, (1, 3, h_, w_))
+# This function is generalized for multiple inputs/outputs for full dimension networks.
+# inputs and outputs are expected to be lists of HostDeviceMem objects.
+def do_inference_v2(context, bindings, inputs, outputs, stream):
     # Transfer input data to the GPU.
     [cuda.memcpy_htod_async(inp.device, inp.host, stream) for inp in inputs]
     # Run inference.
@@ -191,77 +189,3 @@ def do_inference_v2(context, bindings, inputs, outputs, stream, h_, w_, binding_
     stream.synchronize()
     # Return only the host outputs.
     return [out.host for out in outputs]
-
-
-def generate_md5_checksum(local_path):
-    """Returns the MD5 checksum of a local file.
-    Keyword argument:
-    local_path -- path of the file whose checksum shall be generated
-    """
-    with open(local_path, 'rb') as local_file:
-        data = local_file.read()
-        import hashlib
-        return hashlib.md5(data).hexdigest()
-
-
-def download_file(local_path, link, checksum_reference=None):
-    """Checks if a local file is present and downloads it from the specified path otherwise.
-    If checksum_reference is specified, the file's md5 checksum is compared against the
-    expected value.
-    Keyword arguments:
-    local_path -- path of the file whose checksum shall be generated
-    link -- link where the file shall be downloaded from if it is not found locally
-    checksum_reference -- expected MD5 checksum of the file
-    """
-    if not os.path.exists(local_path):
-        print('Downloading from %s, this may take a while...' % link)
-        import wget
-        wget.download(link, local_path)
-        print()
-    if checksum_reference is not None:
-        checksum = generate_md5_checksum(local_path)
-        if checksum != checksum_reference:
-            raise ValueError(
-                'The MD5 checksum of local file %s differs from %s, please manually remove \
-                 the file and try again.' %
-                (local_path, checksum_reference))
-    return local_path
-
-
-# `retry_call` and `retry` are used to wrap the function we want to try multiple times
-def retry_call(func, args=[], kwargs={}, n_retries=3):
-    """Wrap a function to retry it several times.
-    Args:
-        func: function to call
-        args (List): args parsed to func
-        kwargs (Dict): kwargs parsed to func
-        n_retries (int): maximum times of tries
-    """
-    for i_try in range(n_retries):
-        try:
-            func(*args, **kwargs)
-            break
-        except:
-            if i_try == n_retries - 1:
-                raise
-            print("retry...")
-
-
-# Usage: @retry(n_retries)
-def retry(n_retries=3):
-    """Wrap a function to retry it several times. Decorator version of `retry_call`.
-    Args:
-        n_retries (int): maximum times of tries
-    Usage:
-        @retry(n_retries)
-        def func(...):
-            pass
-    """
-
-    def wrapper(func):
-        def _wrapper(*args, **kwargs):
-            retry_call(func, args, kwargs, n_retries)
-
-        return _wrapper
-
-    return wrapper

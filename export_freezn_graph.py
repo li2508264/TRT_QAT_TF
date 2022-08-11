@@ -3,7 +3,7 @@ import tensorflow as tf
 
 with tf.Graph().as_default() as graph:
     with tf.device('/gpu:0'):
-        x = tf.placeholder(tf.float32, [None, 1, 28, 28], name='input_0')
+        x = tf.placeholder(tf.float32, [1, 1, 28, 28], name='input_0')
 
 
         def network(inputs):
@@ -51,7 +51,7 @@ with tf.Graph().as_default() as graph:
     tf.contrib.quantize.experimental_create_eval_graph(symmetric=True, use_qdq=True)
     saver = tf.train.Saver()
     checkpoint_dir = 'saved_results/mnist_ckpt/'
-    checkpoint_name = 'model.ckpt'
+    checkpoint_name = 'model030000.ckpt'
     # checkpoint_dir = 'test_no_dense/'
     # checkpoint_name = 'model.ckpt'
     frozen_dir = "saved_results/"

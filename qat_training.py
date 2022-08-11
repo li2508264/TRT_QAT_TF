@@ -66,8 +66,8 @@ accuracy_op = tf.metrics.accuracy(labels=tf.argmax(y_, axis=1), predictions=tf.a
 # correct_prediction = tf.equal(tf.argmax(y_,1), tf.argmax(logits, axis=1))
 # accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 print(tf.get_default_graph())
-tf.contrib.quantize.experimental_create_training_graph(tf.get_default_graph(), symmetric=True, use_qdq=True,
-                                                       quant_delay=500)
+tf.contrib.quantize.create_training_graph(tf.get_default_graph(),
+                                                       quant_delay=1000)
 global_steps = tf.Variable(0, trainable=False)
 learning_rate = tf.train.exponential_decay(0.001, global_steps, 500, 0.9, staircase=True)
 train_op = tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=global_steps)
@@ -82,7 +82,7 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 with tf.Session(config=config) as sess:
     sess.run(init)
-    for i in range(3001):
+    for i in range(30001):
         mnist_images, batch_ys = mnist.train.next_batch(32)
         batch_xs = np.array(mnist_images*255, dtype=np.uint8)
 #        print(batch_ys[0])
@@ -90,7 +90,7 @@ with tf.Session(config=config) as sess:
                                                         {x: batch_xs.reshape(-1, 28, 28, 1).transpose((0, 3, 1, 2)),
                                                          y_: batch_ys.reshape(-1, 10)})
 
-        if (i % 500 == 0):
+        if (i % 2000 == 0):
             print('current_learning_rate:', current_learning_rate)
             saver.save(sess, checkpoint_dir + 'model'+str(i).zfill(6)+'.ckpt')
             test_accuracy = sess.run(accuracy_op, {x: batch_xs.reshape(-1, 28, 28, 1).transpose((0, 3, 1, 2)),
