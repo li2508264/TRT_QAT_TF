@@ -5,3 +5,4 @@ pycuda
 nvidia-pyindex
 onnx-graph
 onnx-graphsurgeon
+onnxruntime
