@@ -2,3 +2,5 @@ onnx
 tf2onnx
 numpy
 pycuda
+nvidia-pyindex
+onnx-graphsurgeon
