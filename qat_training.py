@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import pdb
 print(tf.__version__)
-
+os.makedirs("saved_results/mnist_ckpt")
 from tensorflow.examples.tutorials.mnist import input_data
 
 mnist = input_data.read_data_sets("/MNIST_data/", one_hot=True)
