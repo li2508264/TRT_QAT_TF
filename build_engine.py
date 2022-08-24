@@ -86,12 +86,10 @@ def preprocess_network(network):
                 if (inp == layer.get_input(k)):
                     mode = trt.ScaleMode.UNIFORM
                     quantize = network.add_scale(inp, mode, scale=quant_scale, shift=zeros)
-                    quantize = network.add_scale(inp, mode, scale=1, shift=zeros)
                     quantize.set_output_type(0, trt.int8)
                     quantize.name = "InputQuantizeNode"
                     quantize.get_output(0).name = "QuantizedInput"
                     dequantize = network.add_scale(quantize.get_output(0), mode, scale=dequant_scale, shift=zeros)
-                    dequantize = network.add_scale(quantize.get_output(0), mode, scale=1, shift=zeros)
                     dequantize.set_output_type(0, trt.float32)
                     dequantize.name = "InputDequantizeNode"
                     dequantize.get_output(0).name = "DequantizedInput"
