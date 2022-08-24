@@ -5,6 +5,8 @@ Do it step by step.
 
 `docker pull nvcr.io/nvidia/tensorflow:22.06-tf1-py3` with Trt8
 
+start the image and git clone the repo,install the requirments
+
  `pip install -r requirements.txt`
 
 
