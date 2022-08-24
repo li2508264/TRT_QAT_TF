@@ -1,6 +1,7 @@
 onnx
 tf2onnx
 numpy
+opencv-python
 pycuda
 nvidia-pyindex
 onnx-graphsurgeon
